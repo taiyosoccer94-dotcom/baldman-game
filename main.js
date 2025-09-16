@@ -164,7 +164,7 @@ function update(dt, now) {
     flashTimer--; if (flashTimer === 0) clearFlash();
   }
 }
-
+/*
 function render() {
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,W,H);
   const g = ctx.createLinearGradient(0,0,0,H);
@@ -177,6 +177,24 @@ function render() {
   men.forEach(drawMan);
   drawWig();
 }
+*/
+
+function render() {
+  // 背景を白に変更
+  ctx.fillStyle = '#ffffff'; 
+  ctx.fillRect(0,0,W,H);
+
+  // 地面をグレーっぽく
+  ctx.fillStyle = '#dddddd';
+  ctx.fillRect(0, H-100, W, 100);
+
+  // 男たち
+  men.forEach(drawMan);
+
+  // カツラ
+  drawWig();
+}
+
 
 function drawWig(){
   const x = wig.x, y = wig.y;
@@ -199,4 +217,5 @@ function loop(now){
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
+
 
