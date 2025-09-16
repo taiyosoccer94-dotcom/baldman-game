@@ -86,11 +86,17 @@ function drawMan(m) {
   // 首
   ctx.fillRect(m.x - 6, m.y - m.bodyH - 8, 12, 8);
 
-  // 頭（画像）
+  // 頭（顔画像を丸く切り抜いて描画）
   const headX = m.x - HEAD_W/2;
   const headY = m.y + m.headOffsetY - HEAD_H/2;
   if (faceImg.complete) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(m.x, m.y + m.headOffsetY, HEAD_W/2, 0, Math.PI*2);
+    ctx.closePath();
+    ctx.clip();
     ctx.drawImage(faceImg, headX, headY, HEAD_W, HEAD_H);
+    ctx.restore();
   } else {
     ctx.fillStyle = '#ccc';
     ctx.beginPath();
@@ -164,37 +170,17 @@ function update(dt, now) {
     flashTimer--; if (flashTimer === 0) clearFlash();
   }
 }
-/*
-function render() {
-  ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,W,H);
-  const g = ctx.createLinearGradient(0,0,0,H);
-  g.addColorStop(0,'#10131a'); g.addColorStop(1,'#0b0b0b');
-  ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
-
-  ctx.fillStyle = '#1f1f1f';
-  ctx.fillRect(0, H-100, W, 100);
-
-  men.forEach(drawMan);
-  drawWig();
-}
-*/
 
 function render() {
-  // 背景を白に変更
-  ctx.fillStyle = '#ffffff'; 
+  ctx.fillStyle = '#ffffff'; // 背景を白に
   ctx.fillRect(0,0,W,H);
 
-  // 地面をグレーっぽく
-  ctx.fillStyle = '#dddddd';
+  ctx.fillStyle = '#dddddd'; // 地面を薄いグレーに
   ctx.fillRect(0, H-100, W, 100);
 
-  // 男たち
   men.forEach(drawMan);
-
-  // カツラ
   drawWig();
 }
-
 
 function drawWig(){
   const x = wig.x, y = wig.y;
@@ -217,5 +203,3 @@ function loop(now){
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
-
-
