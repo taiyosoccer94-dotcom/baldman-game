@@ -140,7 +140,7 @@ function checkHit(m) {
     score += delta; scoreEl.textContent = score;
     best = Math.max(best, score); bestEl.textContent = best;
     localStorage.setItem('bald_best', best);
-    msgEl.textContent = centered ? '神フィット！+3' : '惜しい！+1';
+    msgEl.textContent = centered ? '神フィット' : 'イテッ';
     showOverlay(centered ? '育毛成功！' : '育毛失敗！', centered ? '#0a7a0a' : '#cc1f1f', overlayTimer ? overlayTimer* (1000/60) : 180);
     attachAsHat(m);
     return true;
@@ -244,3 +244,4 @@ function loop(now){
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
+
