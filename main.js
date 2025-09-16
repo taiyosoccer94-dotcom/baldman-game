@@ -27,6 +27,9 @@ const MAN_SPEED_BASE = 1.6;
 const WIG_SIZE = 26;
 const HEAD_W = 60, HEAD_H = 60;
 
+// 中央ヒットのしきい値（小さいほどシビア）
+const CENTER_THRESH = 6;
+
 let men = [];
 let lastSpawn = 0;
 let nextManId = 1;
@@ -35,6 +38,17 @@ let t0 = performance.now();
 let wig = null; // {x,y,vy,falling,attached:{manId,dx,dy}}
 let score = 0, best = Number(localStorage.getItem('bald_best')||0), drops = 0;
 bestEl.textContent = best;
+
+// 画面中央のデカ文字オーバーレイ
+let overlayText = '';
+let overlayTimer = 0;
+let overlayColor = '#111';
+function showOverlay(text, color = '#111', ms = 120) {
+  overlayText = text;
+  overlayColor = color;
+  overlayTimer = Math.round(ms / (1000/60)); // 60fps換算
+}
+function clearOverlay(){ overlayText=''; overlayTimer=0; }
 
 function resetWig() {
   wig = { x: W/2, y: 30, vy: 0, falling: false, attached: null };
@@ -106,30 +120,15 @@ function drawMan(m) {
   ctx.fillStyle = 'rgba(0,0,0,.25)';
   ctx.beginPath(); ctx.ellipse(m.x, m.y+4, 18, 6, 0, 0, Math.PI*2); ctx.fill();
 }
-/*
-// ===== 取り付け =====
-function attachToMan(m) {
-  const headCx = m.x;
-  const headCy = m.y + m.headOffsetY;
-  // 衝突時の相対オフセットを保持（見た目がそのまま）
-  const dx = wig.x - headCx;
-  const dy = wig.y - headCy;
-  wig.attached = { manId: m.id, dx, dy };
-  wig.falling = false;
-  wig.vy = 0;
-}
-*/
-function attachToMan(m) {
-  const headCx = m.x;
-  const headCy = m.y + m.headOffsetY;
-  // 取り付け時のオフセット（dxはそのまま、dyを上にずらす）
-  const dx = wig.x - headCx;
-  const dy = (wig.y - headCy) - 10;  // ← -15px ぶん上に乗せる
-  wig.attached = { manId: m.id, dx, dy };
-  wig.falling = false;
-  wig.vy = 0;
-}
 
+// ===== 取り付け =====
+function attachToMan(m, dx, dy) {
+  // 顔にかぶらないよう少し上げて取り付ける
+  const lift = 15; // 上方向補正
+  wig.attached = { manId: m.id, dx, dy: dy - lift };
+  wig.falling = false;
+  wig.vy = 0;
+}
 
 function checkHit(m) {
   const headCx = m.x;
@@ -137,33 +136,37 @@ function checkHit(m) {
   const onHeadY = Math.abs(wig.y - headCy) < HEAD_H*0.5;
   const onHeadX = Math.abs(wig.x - headCx);
   if (onHeadY && onHeadX < HEAD_W*0.6) {
+    // 評価＆スコア
     const dx = onHeadX;
-    let text, delta;
-    if (dx < 6)       { text = '神フィット！+3'; delta = 3; }
-    else if (dx < 14) { text = 'ナイス！+2';     delta = 2; }
-    else              { text = '惜しい！+1';     delta = 1; }
+    let delta;
+    const centered = dx < CENTER_THRESH;
+    if (centered) { delta = 3; showOverlay('育毛成功！', '#0a7a0a', 120); }
+    else          { delta = 1; showOverlay('育毛失敗！', '#cc1f1f', 120); }
+
     score += delta; scoreEl.textContent = score;
     best = Math.max(best, score); bestEl.textContent = best;
     localStorage.setItem('bald_best', best);
-    flash(text);
-    attachToMan(m);
+
+    // HUDの小メッセージも一応更新（任意）
+    msgEl.textContent = centered ? '神フィット！+3' : '惜しい！+1';
+
+    // そのときの相対位置を保持して取り付け
+    const relDx = wig.x - headCx;
+    const relDy = wig.y - headCy;
+    attachToMan(m, relDx, relDy);
     return true;
   }
   return false;
 }
 
-let flashTimer = 0;
-function flash(t){ flashTimer = 60; msgEl.textContent = t; }
-function clearFlash(){ flashTimer = 0; msgEl.textContent=''; }
-
 // ===== ループ =====
 function update(dt, now) {
   if (now - lastSpawn > SPAWN_EVERY) { spawnMan(); lastSpawn = now; }
 
-  // 男を移動
+  // 男移動
   men.forEach(m => { m.x += m.vx; });
 
-  // 取り付け追従
+  // 取り付け追従 or 落下
   if (wig.attached) {
     const a = wig.attached;
     const m = men.find(mm => mm.id === a.manId);
@@ -171,17 +174,15 @@ function update(dt, now) {
       wig.x = m.x + a.dx;
       wig.y = m.y + m.headOffsetY + a.dy;
     } else {
-      // 取り付け相手が画面外で消えたら次弾へ
-      clearFlash();
+      clearOverlay();
       resetWig();
     }
   } else if (wig.falling) {
-    // 落下
     wig.vy += GRAVITY;
     wig.y  += wig.vy;
   }
 
-  // 命中判定（落下中のみ）
+  // 落下中のみ命中判定
   if (wig.falling) {
     for (const m of men) {
       if (Math.abs(m.x - wig.x) < 80 && Math.abs((m.y+m.headOffsetY) - wig.y) < 80) {
@@ -190,19 +191,21 @@ function update(dt, now) {
     }
   }
 
-  // 地面に落ちたら減点＆リセット
+  // 地面に落下→減点＆リセット
   const groundY = H - 110;
   if (!wig.attached && wig.y > groundY + 10) {
-    flash('ドンマイ… -1');
+    showOverlay('育毛失敗！', '#cc1f1f', 120);
     score = Math.max(0, score - 1);
     scoreEl.textContent = score;
-    setTimeout(() => { clearFlash(); resetWig(); }, 350);
+    setTimeout(() => { resetWig(); }, 350);
   }
 
   // 画面外の男を除去
   men = men.filter(m => m.x > -120 && m.x < W+120);
 
-  if (flashTimer > 0) { flashTimer--; if (flashTimer === 0) clearFlash(); }
+  // オーバーレイタイマー
+  if (overlayTimer > 0) overlayTimer--;
+  if (overlayTimer === 0 && overlayText) clearOverlay();
 }
 
 function render() {
@@ -210,9 +213,24 @@ function render() {
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,W,H);
   ctx.fillStyle = '#dddddd'; ctx.fillRect(0, H-100, W, 100);
 
-  // 男 → カツラ（重ね順）
+  // 男 → カツラ
   men.forEach(drawMan);
   drawWig();
+
+  // 画面中央のデカ文字
+  if (overlayTimer > 0) {
+    ctx.save();
+    ctx.font = `bold ${Math.max(36, Math.floor(W * 0.08))}px system-ui, sans-serif`;
+    ctx.fillStyle = overlayColor;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    // 薄い縁取りで視認性を上げる
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    ctx.strokeText(overlayText, W/2, H*0.35);
+    ctx.fillText(overlayText, W/2, H*0.35);
+    ctx.restore();
+  }
 }
 
 function drawWig(){
@@ -236,5 +254,3 @@ function loop(now){
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
-
-
