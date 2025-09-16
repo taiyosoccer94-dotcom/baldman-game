@@ -106,7 +106,7 @@ function drawMan(m) {
   ctx.fillStyle = 'rgba(0,0,0,.25)';
   ctx.beginPath(); ctx.ellipse(m.x, m.y+4, 18, 6, 0, 0, Math.PI*2); ctx.fill();
 }
-
+/*
 // ===== 取り付け =====
 function attachToMan(m) {
   const headCx = m.x;
@@ -118,6 +118,18 @@ function attachToMan(m) {
   wig.falling = false;
   wig.vy = 0;
 }
+*/
+function attachToMan(m) {
+  const headCx = m.x;
+  const headCy = m.y + m.headOffsetY;
+  // 取り付け時のオフセット（dxはそのまま、dyを上にずらす）
+  const dx = wig.x - headCx;
+  const dy = (wig.y - headCy) - 15;  // ← -15px ぶん上に乗せる
+  wig.attached = { manId: m.id, dx, dy };
+  wig.falling = false;
+  wig.vy = 0;
+}
+
 
 function checkHit(m) {
   const headCx = m.x;
@@ -224,3 +236,4 @@ function loop(now){
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
+
