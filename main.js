@@ -124,7 +124,7 @@ function attachToMan(m) {
   const headCy = m.y + m.headOffsetY;
   // 取り付け時のオフセット（dxはそのまま、dyを上にずらす）
   const dx = wig.x - headCx;
-  const dy = (wig.y - headCy) - 15;  // ← -15px ぶん上に乗せる
+  const dy = (wig.y - headCy) - 10;  // ← -15px ぶん上に乗せる
   wig.attached = { manId: m.id, dx, dy };
   wig.falling = false;
   wig.vy = 0;
@@ -236,4 +236,5 @@ function loop(now){
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
+
 
