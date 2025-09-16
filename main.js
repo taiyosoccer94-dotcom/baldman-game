@@ -20,38 +20,28 @@ function resize() {
 addEventListener('resize', resize);
 resize();
 
-// ===== ゲーム状態 =====
+// ===== ルール・定数 =====
 const GRAVITY = 0.55;
 const SPAWN_EVERY = 1200;
 const MAN_SPEED_BASE = 1.6;
 const WIG_SIZE = 26;
 const HEAD_W = 60, HEAD_H = 60;
+const CENTER_THRESH = 6;   // 真ん中ヒットのしきい値(px)
+const LIFT_ON_ATTACH = 15; // 顔に被らないよう取り付け時に上げる量(px)
 
-// 中央ヒットのしきい値（小さいほどシビア）
-const CENTER_THRESH = 6;
-
+// ===== 状態 =====
 let men = [];
+let hats = []; // {manId, dx, dy} ← 頭に貼り付いたカツラ
 let lastSpawn = 0;
 let nextManId = 1;
 let t0 = performance.now();
 
-let wig = null; // {x,y,vy,falling,attached:{manId,dx,dy}}
+let wig = null; // 現在操作中のカツラ {x,y,vy,falling}
 let score = 0, best = Number(localStorage.getItem('bald_best')||0), drops = 0;
 bestEl.textContent = best;
 
-// 画面中央のデカ文字オーバーレイ
-let overlayText = '';
-let overlayTimer = 0;
-let overlayColor = '#111';
-function showOverlay(text, color = '#111', ms = 120) {
-  overlayText = text;
-  overlayColor = color;
-  overlayTimer = Math.round(ms / (1000/60)); // 60fps換算
-}
-function clearOverlay(){ overlayText=''; overlayTimer=0; }
-
 function resetWig() {
-  wig = { x: W/2, y: 30, vy: 0, falling: false, attached: null };
+  wig = { x: W/2, y: 30, vy: 0, falling: false };
 }
 resetWig();
 
@@ -61,7 +51,7 @@ faceImg.src = 'face.png';
 
 // ===== 入力 =====
 function drop() {
-  if (wig.falling || wig.attached) return;
+  if (wig.falling) return;
   wig.falling = true;
   wig.vy = 0;
   drops++; dropsEl.textContent = drops;
@@ -70,13 +60,13 @@ btn.addEventListener('click', drop);
 
 let dragging = false;
 cvs.addEventListener('pointerdown', e => {
-  if (wig.falling || wig.attached) return;
+  if (wig.falling) return;
   dragging = true;
   const r = cvs.getBoundingClientRect();
   wig.x = e.clientX - r.left;
 });
 cvs.addEventListener('pointermove', e => {
-  if (!dragging || wig.falling || wig.attached) return;
+  if (!dragging || wig.falling) return;
   const r = cvs.getBoundingClientRect();
   wig.x = e.clientX - r.left;
 });
@@ -98,7 +88,6 @@ function drawMan(m) {
   ctx.fillRect(m.x - m.bodyW/2, m.y - m.bodyH, m.bodyW, m.bodyH);
   // 首
   ctx.fillRect(m.x - 6, m.y - m.bodyH - 8, 12, 8);
-
   // 頭（丸く切り抜いた顔）
   const headX = m.x - HEAD_W/2;
   const headY = m.y + m.headOffsetY - HEAD_H/2;
@@ -115,19 +104,29 @@ function drawMan(m) {
     ctx.arc(m.x, m.y + m.headOffsetY, HEAD_W/2, 0, Math.PI*2);
     ctx.fill();
   }
-
   // 影
   ctx.fillStyle = 'rgba(0,0,0,.25)';
   ctx.beginPath(); ctx.ellipse(m.x, m.y+4, 18, 6, 0, 0, Math.PI*2); ctx.fill();
 }
 
-// ===== 取り付け =====
-function attachToMan(m, dx, dy) {
-  // 顔にかぶらないよう少し上げて取り付ける
-  const lift = 15; // 上方向補正
-  wig.attached = { manId: m.id, dx, dy: dy - lift };
-  wig.falling = false;
-  wig.vy = 0;
+// ===== オーバーレイ（中央デカ文字） =====
+let overlayText = '';
+let overlayTimer = 0;
+let overlayColor = '#111';
+function showOverlay(text, color = '#111', ms = 120) {
+  overlayText = text; overlayColor = color;
+  overlayTimer = Math.round(ms / (1000/60));
+}
+function clearOverlay(){ overlayText=''; overlayTimer=0; }
+
+// ===== 当たり処理 =====
+function attachAsHat(m) {
+  const headCx = m.x;
+  const headCy = m.y + m.headOffsetY;
+  const relDx = wig.x - headCx;
+  const relDy = (wig.y - headCy) - LIFT_ON_ATTACH; // 少し上に
+  hats.push({ manId: m.id, dx: relDx, dy: relDy }); // ← 貼り付けを追加
+  resetWig(); // ← 即座に次のカツラを準備！
 }
 
 function checkHit(m) {
@@ -136,24 +135,14 @@ function checkHit(m) {
   const onHeadY = Math.abs(wig.y - headCy) < HEAD_H*0.5;
   const onHeadX = Math.abs(wig.x - headCx);
   if (onHeadY && onHeadX < HEAD_W*0.6) {
-    // 評価＆スコア
-    const dx = onHeadX;
-    let delta;
-    const centered = dx < CENTER_THRESH;
-    if (centered) { delta = 3; showOverlay('育毛成功！', '#0a7a0a', 120); }
-    else          { delta = 1; showOverlay('育毛失敗！', '#cc1f1f', 120); }
-
+    const centered = onHeadX < CENTER_THRESH;
+    const delta = centered ? 3 : 1;
     score += delta; scoreEl.textContent = score;
     best = Math.max(best, score); bestEl.textContent = best;
     localStorage.setItem('bald_best', best);
-
-    // HUDの小メッセージも一応更新（任意）
     msgEl.textContent = centered ? '神フィット！+3' : '惜しい！+1';
-
-    // そのときの相対位置を保持して取り付け
-    const relDx = wig.x - headCx;
-    const relDy = wig.y - headCy;
-    attachToMan(m, relDx, relDy);
+    showOverlay(centered ? '育毛成功！' : '育毛失敗！', centered ? '#0a7a0a' : '#cc1f1f', overlayTimer ? overlayTimer* (1000/60) : 180);
+    attachAsHat(m);
     return true;
   }
   return false;
@@ -166,18 +155,8 @@ function update(dt, now) {
   // 男移動
   men.forEach(m => { m.x += m.vx; });
 
-  // 取り付け追従 or 落下
-  if (wig.attached) {
-    const a = wig.attached;
-    const m = men.find(mm => mm.id === a.manId);
-    if (m) {
-      wig.x = m.x + a.dx;
-      wig.y = m.y + m.headOffsetY + a.dy;
-    } else {
-      clearOverlay();
-      resetWig();
-    }
-  } else if (wig.falling) {
+  // 操作中のカツラ：落下
+  if (wig.falling) {
     wig.vy += GRAVITY;
     wig.y  += wig.vy;
   }
@@ -191,17 +170,19 @@ function update(dt, now) {
     }
   }
 
-  // 地面に落下→減点＆リセット
+  // 地面に落下→減点＆すぐ次へ
   const groundY = H - 110;
-  if (!wig.attached && wig.y > groundY + 10) {
-    showOverlay('育毛失敗！', '#cc1f1f', 120);
+  if (wig.falling && wig.y > groundY + 10) {
+    showOverlay('育毛失敗！', '#cc1f1f', 180);
     score = Math.max(0, score - 1);
     scoreEl.textContent = score;
-    setTimeout(() => { resetWig(); }, 350);
+    resetWig(); // ← これも即リセットで連射OK
   }
 
   // 画面外の男を除去
   men = men.filter(m => m.x > -120 && m.x < W+120);
+  // 既にいない男に付いた帽子を除去
+  hats = hats.filter(h => men.some(m => m.id === h.manId));
 
   // オーバーレイタイマー
   if (overlayTimer > 0) overlayTimer--;
@@ -213,9 +194,20 @@ function render() {
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,W,H);
   ctx.fillStyle = '#dddddd'; ctx.fillRect(0, H-100, W, 100);
 
-  // 男 → カツラ
+  // 男
   men.forEach(drawMan);
-  drawWig();
+
+  // 頭に貼り付いたカツラ（複数）
+  for (const h of hats) {
+    const m = men.find(mm => mm.id === h.manId);
+    if (!m) continue;
+    const x = m.x + h.dx;
+    const y = m.y + m.headOffsetY + h.dy;
+    drawWigAt(x, y);
+  }
+
+  // 現在操作中のカツラ
+  drawWigAt(wig.x, wig.y);
 
   // 画面中央のデカ文字
   if (overlayTimer > 0) {
@@ -224,7 +216,6 @@ function render() {
     ctx.fillStyle = overlayColor;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    // 薄い縁取りで視認性を上げる
     ctx.lineWidth = 6;
     ctx.strokeStyle = 'rgba(255,255,255,0.9)';
     ctx.strokeText(overlayText, W/2, H*0.35);
@@ -233,8 +224,7 @@ function render() {
   }
 }
 
-function drawWig(){
-  const x = wig.x, y = wig.y;
+function drawWigAt(x, y){
   ctx.fillStyle = '#222';
   ctx.beginPath(); ctx.ellipse(x, y, WIG_SIZE*0.9, WIG_SIZE*0.55, 0, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle = '#111'; ctx.beginPath();
