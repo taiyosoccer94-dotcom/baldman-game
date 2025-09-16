@@ -1,4 +1,3 @@
-
 // ===== 基本設定 =====
 const cvs = document.getElementById('game');
 const ctx = cvs.getContext('2d', { alpha: false });
@@ -10,9 +9,9 @@ const btn     = document.getElementById('btn');
 
 let W, H, scale;
 function resize() {
-  // キャンバスをデバイスピクセル比に合わせて鮮明に
   const dpr = window.devicePixelRatio || 1;
-  W = cvs.clientWidth; H = window.innerHeight - document.querySelector('#hud').clientHeight - document.querySelector('header').clientHeight;
+  W = cvs.clientWidth;
+  H = window.innerHeight - document.querySelector('#hud').clientHeight - document.querySelector('header').clientHeight;
   cvs.width  = Math.floor(W * dpr);
   cvs.height = Math.floor(H * dpr);
   ctx.setTransform(dpr,0,0,dpr,0,0);
@@ -26,13 +25,13 @@ const GRAVITY = 0.55;           // 重力
 const SPAWN_EVERY = 1200;       // 男の出現間隔(ms)
 const MAN_SPEED_BASE = 1.6;     // 男の速度
 const WIG_SIZE = 26;            // カツラの外観サイズ
-const HEAD_W = 44, HEAD_H = 38; // 頭サイズ（判定用）
+const HEAD_W = 60, HEAD_H = 60; // 画像の頭サイズ
 
-let men = [];         // 画面上の男達
+let men = [];
 let lastSpawn = 0;
 let t0 = performance.now();
 
-let wig = null;       // {x,y,vy,falling}
+let wig = null;
 let score = 0, best = Number(localStorage.getItem('bald_best')||0), drops = 0;
 bestEl.textContent = best;
 
@@ -40,6 +39,10 @@ function resetWig() {
   wig = { x: W/2, y: 30, vy: 0, falling: false };
 }
 resetWig();
+
+// ===== 顔画像の読み込み =====
+const faceImg = new Image();
+faceImg.src = 'face.png';  // ←リポジトリにアップロードした顔画像ファイル名
 
 // ===== 入力 =====
 function drop() {
@@ -50,7 +53,7 @@ function drop() {
   }
 }
 btn.addEventListener('click', drop);
-// 画面タップで落とす/指で左右にスライドで位置調整
+
 let dragging = false;
 cvs.addEventListener('pointerdown', e => {
   dragging = true;
@@ -68,9 +71,9 @@ cvs.addEventListener('pointerup', () => { dragging = false; drop(); });
 function rand(a,b){ return a + Math.random()*(b-a); }
 
 function spawnMan() {
-  const y = H - 110; // 地面の上に立つ
+  const y = H - 110;
   const speed = MAN_SPEED_BASE * (0.8 + Math.random()*0.6) * Math.max(0.8, scale);
-  const startX = Math.random() < 0.5 ? -80 : W + 80; // 左右どちらからでも
+  const startX = Math.random() < 0.5 ? -80 : W + 80;
   const dir = startX < 0 ? 1 : -1;
   const bodyW = 46, bodyH = 72;
   men.push({ x:startX, y, vx: speed*dir, bodyW, bodyH, headOffsetY: -bodyH - 8 });
@@ -82,31 +85,33 @@ function drawMan(m) {
   ctx.fillRect(m.x - m.bodyW/2, m.y - m.bodyH, m.bodyW, m.bodyH);
   // 首
   ctx.fillRect(m.x - 6, m.y - m.bodyH - 8, 12, 8);
-  // 頭（ハゲ）=肌色の楕円+てかり
-  ctx.fillStyle = '#f0caa5';
-  roundedEllipse(m.x, m.y + m.headOffsetY, HEAD_W, HEAD_H, 12);
-  ctx.fillStyle = 'rgba(255,255,255,.25)';
-  roundedEllipse(m.x+8, m.y + m.headOffsetY-6, 16, 10, 6);
+
+  // 頭（画像）
+  const headX = m.x - HEAD_W/2;
+  const headY = m.y + m.headOffsetY - HEAD_H/2;
+  if (faceImg.complete) {
+    ctx.drawImage(faceImg, headX, headY, HEAD_W, HEAD_H);
+  } else {
+    ctx.fillStyle = '#ccc';
+    ctx.beginPath();
+    ctx.arc(m.x, m.y + m.headOffsetY, HEAD_W/2, 0, Math.PI*2);
+    ctx.fill();
+  }
+
   // 地面影
   ctx.fillStyle = 'rgba(0,0,0,.25)';
-  ctx.beginPath(); ctx.ellipse(m.x, m.y+4, 18, 6, 0, 0, Math.PI*2); ctx.fill();
-}
-
-function roundedEllipse(cx, cy, w, h, r){
   ctx.beginPath();
-  ctx.ellipse(cx, cy, w/2, h/2, 0, 0, Math.PI*2);
+  ctx.ellipse(m.x, m.y+4, 18, 6, 0, 0, Math.PI*2);
   ctx.fill();
 }
 
 // ===== 判定 =====
 function checkHit(m) {
-  // 頭の中心とカツラの中心のズレで評価
   const headCx = m.x;
   const headCy = m.y + m.headOffsetY;
-  const onHeadY = Math.abs(wig.y - headCy) < HEAD_H*0.5; // 縦位置おおよそ一致
+  const onHeadY = Math.abs(wig.y - headCy) < HEAD_H*0.5;
   const onHeadX = Math.abs(wig.x - headCx);
   if (onHeadY && onHeadX < HEAD_W*0.6) {
-    // 命中：ズレ量でメッセージ
     const dx = onHeadX;
     let text, delta;
     if (dx < 6)       { text = '神フィット！+3'; delta = 3; }
@@ -116,7 +121,6 @@ function checkHit(m) {
     best = Math.max(best, score); bestEl.textContent = best;
     localStorage.setItem('bald_best', best);
     flash(text);
-    // カツラを頭に固定して少しの間表示
     wig.falling = false;
     wig.y = headCy - 6;
     return true;
@@ -124,36 +128,30 @@ function checkHit(m) {
   return false;
 }
 
-let flashTimer = 0, flashText = '';
-function flash(t){ flashText = t; flashTimer = 60; msgEl.textContent = t; }
-function clearFlash(){ flashTimer = 0; flashText=''; msgEl.textContent=''; }
+let flashTimer = 0;
+function flash(t){ flashTimer = 60; msgEl.textContent = t; }
+function clearFlash(){ flashTimer = 0; msgEl.textContent=''; }
 
 // ===== メインループ =====
 function update(dt, now) {
-  // スポーン
   if (now - lastSpawn > SPAWN_EVERY) {
     spawnMan();
     lastSpawn = now;
   }
-  // 男の移動
   men.forEach(m => m.x += m.vx);
-  // 画面外の男を除去
   men = men.filter(m => m.x > -120 && m.x < W+120);
 
-  // カツラの落下
   if (wig.falling) {
     wig.vy += GRAVITY;
     wig.y  += wig.vy;
   }
 
-  // 判定（最も近い男のみざっくり判定）
   for (const m of men) {
     if (Math.abs(m.x - wig.x) < 80 && Math.abs((m.y+m.headOffsetY) - wig.y) < 80) {
       if (checkHit(m)) break;
     }
   }
 
-  // 失敗：地面まで落ちたら-1 & リセット
   const groundY = H - 110;
   if (wig.y > groundY + 10) {
     flash('ドンマイ… -1');
@@ -168,37 +166,28 @@ function update(dt, now) {
 }
 
 function render() {
-  // 背景
   ctx.fillStyle = '#0e0e0e'; ctx.fillRect(0,0,W,H);
-  // 空のグラデ風
   const g = ctx.createLinearGradient(0,0,0,H);
   g.addColorStop(0,'#10131a'); g.addColorStop(1,'#0b0b0b');
   ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
 
-  // 地面
   ctx.fillStyle = '#1f1f1f';
   ctx.fillRect(0, H-100, W, 100);
 
-  // 男たち
   men.forEach(drawMan);
-
-  // カツラ
   drawWig();
 }
 
 function drawWig(){
   const x = wig.x, y = wig.y;
-  // ベース
   ctx.fillStyle = '#222';
   ctx.beginPath(); ctx.ellipse(x, y, WIG_SIZE*0.9, WIG_SIZE*0.55, 0, 0, Math.PI*2); ctx.fill();
-  // 毛
   ctx.fillStyle = '#111'; ctx.beginPath();
   ctx.moveTo(x - WIG_SIZE*0.9, y);
   ctx.bezierCurveTo(x - 10, y - 18, x + 10, y - 18, x + WIG_SIZE*0.9, y);
   ctx.lineTo(x + WIG_SIZE*0.9, y + 6);
   ctx.quadraticCurveTo(x, y + 16, x - WIG_SIZE*0.9, y + 6);
   ctx.closePath(); ctx.fill();
-  // ハイライト
   ctx.fillStyle = 'rgba(255,255,255,.08)';
   ctx.beginPath(); ctx.ellipse(x-6,y-4,10,6,0,0,Math.PI*2); ctx.fill();
 }
