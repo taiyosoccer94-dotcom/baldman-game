@@ -166,7 +166,7 @@ function update(dt, now) {
 }
 
 function render() {
-  ctx.fillStyle = '#0e0e0e'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,W,H);
   const g = ctx.createLinearGradient(0,0,0,H);
   g.addColorStop(0,'#10131a'); g.addColorStop(1,'#0b0b0b');
   ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
@@ -199,3 +199,4 @@ function loop(now){
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
+
