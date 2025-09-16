@@ -128,4 +128,115 @@ function attachWigToMan(m) {
 
 function checkHit(m) {
   const headCx = m.x;
-  cons
+  const headCy = m.y + m.headOffsetY;
+  const onHeadY = Math.abs(wig.y - headCy) < HEAD_H*0.5;
+  const onHeadX = Math.abs(wig.x - headCx);
+  if (onHeadY && onHeadX < HEAD_W*0.6) {
+    const dx = onHeadX;
+    let text, delta;
+    if (dx < 6)       { text = '神フィット！+3'; delta = 3; }
+    else if (dx < 14) { text = 'ナイス！+2';     delta = 2; }
+    else              { text = '惜しい！+1';     delta = 1; }
+    score += delta; scoreEl.textContent = score;
+    best = Math.max(best, score); bestEl.textContent = best;
+    localStorage.setItem('bald_best', best);
+    flash(text);
+    attachWigToMan(m);           // ← 当たったら頭に取り付け
+    return true;
+  }
+  return false;
+}
+
+let flashTimer = 0;
+function flash(t){ flashTimer = 60; msgEl.textContent = t; }
+function clearFlash(){ flashTimer = 0; msgEl.textContent=''; }
+
+// ===== メインループ =====
+function update(dt, now) {
+  // スポーン
+  if (now - lastSpawn > SPAWN_EVERY) {
+    spawnMan();
+    lastSpawn = now;
+  }
+
+  // 男の移動
+  men.forEach(m => { m.x += m.vx; });
+
+  // カツラ：落下 or 取り付け追従
+  if (wig.attached) {
+    const a = wig.attached;
+    // 取り付け相手がまだ存在していれば追従
+    if (men.includes(a.man)) {
+      wig.x = a.man.x + a.dx;
+      wig.y = a.man.y + a.dy + a.man.headOffsetY;
+    } else {
+      // 相手が画面外に去ったら次を投下できるようリセット
+      clearFlash();
+      resetWig();
+    }
+  } else if (wig.falling) {
+    wig.vy += GRAVITY;
+    wig.y  += wig.vy;
+  }
+
+  // 命中判定（落下中のみチェック）
+  if (wig.falling) {
+    for (const m of men) {
+      if (Math.abs(m.x - wig.x) < 80 && Math.abs((m.y+m.headOffsetY) - wig.y) < 80) {
+        if (checkHit(m)) break;
+      }
+    }
+  }
+
+  // 失敗：地面到達で減点してリセット
+  const groundY = H - 110;
+  if (!wig.attached && wig.y > groundY + 10) {
+    flash('ドンマイ… -1');
+    score = Math.max(0, score - 1);
+    scoreEl.textContent = score;
+    setTimeout(() => { clearFlash(); resetWig(); }, 350);
+  }
+
+  // 画面外へ出た男を除去
+  const beforeCount = men.length;
+  men = men.filter(m => m.x > -120 && m.x < W+120);
+  // 取り付け先が消えたらwigもリセット（保険）
+  if (wig.attached && !men.includes(wig.attached.man)) {
+    clearFlash();
+    resetWig();
+  }
+
+  // メッセージタイマー
+  if (flashTimer > 0) { flashTimer--; if (flashTimer === 0) clearFlash(); }
+}
+
+function render() {
+  // 背景（白） & 地面（薄グレー）
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle = '#dddddd'; ctx.fillRect(0, H-100, W, 100);
+
+  men.forEach(drawMan);
+  drawWig();
+}
+
+function drawWig(){
+  const x = wig.x, y = wig.y;
+  ctx.fillStyle = '#222';
+  ctx.beginPath(); ctx.ellipse(x, y, WIG_SIZE*0.9, WIG_SIZE*0.55, 0, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#111'; ctx.beginPath();
+  ctx.moveTo(x - WIG_SIZE*0.9, y);
+  ctx.bezierCurveTo(x - 10, y - 18, x + 10, y - 18, x + WIG_SIZE*0.9, y);
+  ctx.lineTo(x + WIG_SIZE*0.9, y + 6);
+  ctx.quadraticCurveTo(x, y + 16, x - WIG_SIZE*0.9, y + 6);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = 'rgba(0,0,0,.08)';
+  ctx.beginPath(); ctx.ellipse(x-6,y-4,10,6,0,0,Math.PI*2); ctx.fill();
+}
+
+function loop(now){
+  const dt = now - t0; t0 = now;
+  update(dt, now);
+  render();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
